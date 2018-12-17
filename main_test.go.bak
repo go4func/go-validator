@@ -1,0 +1,54 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+func TestSendRequestTestServer(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		// TODO logic test logic here
+		fmt.Println("Path", req.URL.Path)
+		if req.URL.Path != "/callback" {
+			rw.WriteHeader(404)
+			rw.Write([]byte(`404 Not Found`))
+
+		} else {
+			rw.WriteHeader(200)
+			rw.Write([]byte(`200 OK`))
+		}
+		b, _ := ioutil.ReadAll(req.Body)
+		fmt.Println("Body", string(b))
+
+	}))
+	defer server.Close()
+
+	type TestPair struct {
+		request CallBackRequest
+		status  int
+	}
+
+	testPairs := []TestPair{
+		{CallBackRequest{method: http.MethodPost, URL: server.URL + "/callback"}, 200},
+		{CallBackRequest{method: http.MethodPost, URL: server.URL + "/abc"}, 404},
+	}
+
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+	cs := NewCallbackService(ctx,
+		&CallBackConfig{100, 10})
+
+	for _, testPair := range testPairs {
+		statusCode := <-cs.CallBack(testPair.request)
+		if statusCode != testPair.status {
+			t.Error("For", testPair.request,
+				"expected", 200,
+				"got", statusCode)
+		}
+	}
+
+}
